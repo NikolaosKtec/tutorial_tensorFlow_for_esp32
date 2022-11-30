@@ -38,19 +38,19 @@ int inference_count = 0;
 constexpr int kTensorArenaSize = 2000;
 uint8_t tensor_arena[kTensorArenaSize];
 }  // namespace
-
+const byte pot = 26;
 const byte led = 4;
 float y_return = 0;
 
 // The name of this function is important for Arduino compatibility.
 void setup() {
 
-  ledcAttachPin(led,0);
-  ledcSetup (0,2000,8); // 8 bits
+  Serial.begin(115200);
 
-  // Set up logging. Google style is to avoid globals or statics because of
-  // lifetime uncertainty, but since this has a trivial destructor it's okay.
-  // NOLINTNEXTLINE(runtime-global-variables)
+  ledcAttachPin(led,0); //canal 0
+  ledcSetup (0,2000,10); // 10 bits
+
+  
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
 
@@ -65,8 +65,7 @@ void setup() {
 
     }
 
-    // Isso puxa todas as implementações de operação que precisamos.
-    // NOLINTNEXTLINE(variáveis globais de tempo de execução)
+   
     static tflite::AllOpsResolver resolver;
 
     // Build an interpreter to run the model with.
@@ -92,24 +91,28 @@ void setup() {
 
 // The name of this function is important for Arduino compatibility.
 void loop() {
-  // Calculate an x value to feed into the model. We compare the current
-  // inference_count to the number of inferences per cycle to determine
-  // our position within the range of possible x values the model was
-  // trained on, and use this to calculate a value.
-  float position = static_cast<float>(inference_count) /
-                   static_cast<float>(kInferencesPerCycle);
-  float x = position * kXrange;
 
-  // Quantize the input from floating-point to integer
-  int8_t x_quantized = x / input->params.scale + input->params.zero_point;
+float x_val_pi =  mapfloat(analogRead(pot), 0, 4095, 0.f, 6.283185482f);
+
+ Serial.println();
+ Serial.print("valor x em pi:");
+ Serial.println(x_val_pi);
+  
+
+
+  
+  int8_t x_quantized = x_val_pi / input->params.scale + input->params.zero_point;
+
   // Place the quantized input in the model's input tensor
+  // inferir um valor X, a partir do potênciometro, de acordo com a escala do tensor
+
   input->data.int8[0] = x_quantized;
 
   // Run inference, and report an  ledcWrite(0, y_return*100);y error
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on x: %f\n",
-                         static_cast<double>(x));
+                         static_cast<double>(x_val_pi));
     return;
   }
 
@@ -120,14 +123,12 @@ void loop() {
   
   // Output the results. A custom HandleOutput function can be implemented
   // for each supported hardware target.
-  y_return = HandleOutput(error_reporter, x, y);
+  y_return = HandleOutput(error_reporter, x_val_pi, y);
   
-  //  Serial.println(y_return);
-  ledcWrite(0, y_return*100);
+  ledcWrite(0, mapfloat(y_return, -1.f, 1.f, 0, 1025));
+  Serial.println();
+  Serial.print("valor da saida:");
+  Serial.println(y_return);
   
-  // Increment the inference_counter, and reset it if we have reached
-  // the total number per cycle
-  inference_count += 1;
-  if (inference_count >= kInferencesPerCycle) inference_count = 0;
   delay(300);
 }
